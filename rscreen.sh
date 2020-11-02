@@ -3,7 +3,6 @@
 rscreen () {
     # function to record full screen monitor and audio out.
     #  
-    echo "[I] Executing script ..."
     echo "[I] Identifiying monitors ..."
     sleep 1
 
@@ -15,13 +14,15 @@ rscreen () {
     # output, like:
     #     eDP-1 1920x1080+0+0 1,HDMI-1 1920x1080+1921+0,
     #
-    # result will be put into an indexed array to further 
+    # result will be put into an indexed array
     #
     IFS=",";scr=($(xrandr | grep " connected"| awk -F " " -v ORS="," \
                '{if ($3 == "primary")\
                    {print $1 " " $4 " 1"} else  print $1 " " $3}'))
     
-    # declaring the associative array
+    # declaring the associative array to save info about monitors, screen size
+    # and positio, as well as the primary monitor.
+    #
     declare -A a_scr
    
     # looping through $scr to generate inputs for the associative array. 
@@ -50,20 +51,22 @@ rscreen () {
     read -p "> " _mon
     
     echo -e "[I] Which audio to record?"
-    echo -e "1. audio out\n2. audio in+out"
+    echo -e "0. audio out\n1. audio in+out"
 
     read -p "> " _aud
-
+    
+    # setting audio to record (atr var)
+    #
     if [ -z $_aud ]; then
         atr="out"
     else
-        aud=(1 2)
-        if [ -z ${aud[$_aud]} ]; then
+        aud=(0 1)
+        if ! [ ${aud[$_aud]+set} ]; then
             echo -e "[E] Audio option unavailable!"
             return 1
         fi
 
-        if [ $_aud == 1 ]; then 
+        if [ $_aud == 0 ]; then 
            atr="out"
         else
            atr="inout" 
@@ -113,16 +116,30 @@ rscreen () {
 
     ### END OF AUDIO PARAMETERS DEFINITIONS ###
 
-    # execute ffmpeg to capture screen and audio out 
+    # execute ffmpeg to capture screen and audio according to $atr 
     #
-    ffmpeg -hide_banner -y \
-        -video_size $vs\
-        -framerate 30 \
-        -f x11grab -i :0.0+$po\
-        -thread_queue_size 512 \
-        -f pulse -i $a_out \
-        -c:a libvorbis \
-        /tmp/screen_and_audio_out.mkv
+    if [ $atr == "out" ]
+    then
+       ffmpeg -hide_banner -y \
+           -video_size $vs\
+           -framerate 30 \
+           -f x11grab -i :0.0+$po \
+           -thread_queue_size 512 \
+           -f pulse -i $a_out \
+           -c:a libvorbis \
+           /tmp/screen_and_audio_out.mkv
+    else 
+       ffmpeg -hide_banner -y \
+           -video_size $vs \
+           -framerate 30 \
+           -f x11grab -i :0.0+$po \
+           -thread_queue_size 512 \
+           -f pulse -filter_complex amerge -ac 2 -i $a_in \
+           -f pulse -ac 2 -i $a_out \
+           -c:v libx264rgb \
+           -crf 0 -preset ultrafast \
+           /tmp/screen_and_audio_in_out.mkv
+    fi
 }
 
 rscreen_in_out () {
@@ -212,6 +229,6 @@ record_cam () {
         -framerate 30 \
         -video_size 640x480 \
         -i /dev/video0 \
-        output.mkv
+        /tmp/output.mkv
 }
 
